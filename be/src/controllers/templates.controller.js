@@ -1,56 +1,127 @@
-const svc = require('../services/templates.service');
+const multer = require('multer');
+const upload = multer(); // memory storage
+const tmplService = require('../services/templates.service');
+const { parseExcelBuffer } = require('../utils/parseExcel');
 
-function makeKey(branchId, departmentId, positionId) {
-  return [branchId, departmentId, positionId].join('|');
+// GET /templates
+async function list(req, res) {
+  try {
+    const items = await tmplService.list();
+    res.json({ items });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 }
 
-exports.list = async (req, res, next) => {
+// GET /templates/:key
+async function get(req, res) {
   try {
-    const items = await svc.list();
-    res.json({ items });
-  } catch (e) { next(e); }
-};
-
-exports.upsert = async (req, res, next) => {
-  const { branchId, departmentId, positionId, headers, rows, sourceFile } = req.body || {};
-  if (!branchId || !departmentId || !positionId) return res.status(400).json({ error: 'branchId, departmentId, positionId are required' });
-  if (!Array.isArray(headers) || !Array.isArray(rows)) return res.status(400).json({ error: 'headers and rows must be arrays' });
-  const key = makeKey(branchId, departmentId, positionId);
-  try {
-    const saved = await svc.upsert({ key, branchId, departmentId, positionId, headers, rows, sourceFile });
-    res.json(saved);
-  } catch (e) { next(e); }
-};
-
-exports.bulkAssign = async (req, res, next) => {
-  const { keys, headers, rows, sourceFile } = req.body || {};
-  if (!Array.isArray(keys) || keys.length === 0) return res.status(400).json({ error: 'keys is required' });
-  if (!Array.isArray(headers) || !Array.isArray(rows)) return res.status(400).json({ error: 'headers and rows must be arrays' });
-  try {
-    const results = [];
-    for (const key of keys) {
-      const [branchId, departmentId, positionId] = key.split('|');
-      const saved = await svc.upsert({ key, branchId, departmentId, positionId, headers, rows, sourceFile });
-      results.push(saved);
-    }
-    res.json({ items: results });
-  } catch (e) { next(e); }
-};
-
-exports.remove = async (req, res, next) => {
-  const { key } = req.params;
-  if (!key) return res.status(400).json({ error: 'key is required' });
-  try {
-    await svc.remove(key);
-    res.json({ ok: true });
-  } catch (e) { next(e); }
-};
-
-exports.get = async (req, res, next) => {
-  const { key } = req.params;
-  try {
-    const item = await svc.get(key);
-    if (!item) return res.status(404).json({ error: 'not found' });
+    const item = await tmplService.get(req.params.key);
+    if (!item) return res.status(404).json({ error: 'Not found' });
     res.json(item);
-  } catch (e) { next(e); }
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+}
+
+// POST /templates
+async function upsert(req, res) {
+  try {
+    const saved = await tmplService.upsert(req.body);
+    res.json(saved);
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+}
+
+// POST /templates/bulk
+async function bulkAssign(req, res) {
+  try {
+    const { keys, headers, rows, sourceFile } = req.body || {};
+    if (!Array.isArray(keys) || !headers || !rows) {
+      return res.status(400).json({ error: 'keys, headers, rows are required' });
+    }
+    for (const key of keys) {
+      const [branchId, departmentId, positionId] = String(key).split('|');
+      await tmplService.upsert({ key, branchId, departmentId, positionId, headers, rows, sourceFile });
+    }
+    res.json({ ok: true, count: keys.length });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+}
+
+// DELETE /templates/:key
+async function remove(req, res) {
+  try {
+    await tmplService.remove(req.params.key);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+}
+
+// NEW: POST /templates/import (multipart) -> parse + save one group
+const importOneMiddleware = upload.single('file');
+async function importOne(req, res) {
+  try {
+    const { branchId, departmentId, positionId } = req.body || {};
+    if (!req.file) return res.status(400).json({ error: 'file is required' });
+    if (!branchId || !departmentId || !positionId) return res.status(400).json({ error: 'branchId, departmentId, positionId are required' });
+
+    const { headers, rows } = parseExcelBuffer(req.file.buffer);
+    const key = [branchId, departmentId, positionId].join('|');
+    const saved = await tmplService.upsert({
+      key,
+      branchId,
+      departmentId,
+      positionId,
+      headers,
+      rows,
+      sourceFile: req.file.originalname,
+    });
+    res.json(saved);
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+}
+
+// NEW: POST /templates/import-bulk (multipart) -> parse once + save many keys
+const importBulkMiddleware = upload.single('file');
+async function importBulk(req, res) {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'file is required' });
+    let { keys } = req.body || {};
+    try { keys = JSON.parse(keys); } catch {}
+    if (!Array.isArray(keys) || keys.length === 0) return res.status(400).json({ error: 'keys[] is required' });
+
+    const { headers, rows } = parseExcelBuffer(req.file.buffer);
+    for (const key of keys) {
+      const [branchId, departmentId, positionId] = String(key).split('|');
+      await tmplService.upsert({
+        key,
+        branchId,
+        departmentId,
+        positionId,
+        headers,
+        rows,
+        sourceFile: req.file.originalname,
+      });
+    }
+    res.json({ ok: true, count: keys.length });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+}
+
+module.exports = {
+  list,
+  get,
+  upsert,
+  bulkAssign,
+  remove,
+  importOneMiddleware,
+  importOne,
+  importBulkMiddleware,
+  importBulk,
 };

@@ -235,7 +235,7 @@ const EvaluationForm = () => {
                           const cellData = row?.[cidx];
                           
                           // Handle new object structure from Excel with formatting
-                          if (cellData && typeof cellData === 'object' && cellData.hasOwnProperty('value')) {
+                          if (cellData && typeof cellData === 'object' && Object.prototype.hasOwnProperty.call(cellData, 'value')) {
                             return (
                               <td key={cidx} className={cellData.isInput ? 'input-required' : ''}>
                                 {cellData.isInput ? (

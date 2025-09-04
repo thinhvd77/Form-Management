@@ -340,7 +340,7 @@ function AdminPage() {
                       const cellData = r[cidx];
                       
                       // Handle new object structure
-                      if (cellData && typeof cellData === 'object' && cellData.hasOwnProperty('value')) {
+                      if (cellData && typeof cellData === 'object' && Object.prototype.hasOwnProperty.call(cellData, 'value')) {
                         return (
                           <td key={cidx} className={cellData.isInput ? 'input-cell' : ''}>
                             {cellData.isInput ? (

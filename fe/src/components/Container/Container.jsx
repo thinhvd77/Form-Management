@@ -6,7 +6,7 @@ const Container = ({
   maxWidth = 'default', 
   padding = 'default',
   className = '',
-  as: Component = 'div' 
+  as = 'div' 
 }) => {
   const containerClass = [
     'container',
@@ -15,10 +15,11 @@ const Container = ({
     className
   ].filter(Boolean).join(' ');
 
+  const TagName = as;
   return (
-    <Component className={containerClass}>
+    <TagName className={containerClass}>
       {children}
-    </Component>
+    </TagName>
   );
 };
 

@@ -6,262 +6,106 @@ import { makeKey, upsertTemplate, listTemplates, removeTemplate } from '../../se
 import { TemplatesAPI } from '../../services/api';
 
 // Thay thế hàm parseWorkbookToJSON cũ trong file AdminPage.js của bạn bằng hàm này
+// Thay thế toàn bộ hàm parseWorkbookToJSON cũ bằng phiên bản hoàn chỉnh này
 function parseWorkbookToJSON(workbook) {
     const firstSheetName = workbook.SheetNames[0];
     const worksheet = workbook.Sheets[firstSheetName];
-    if (!worksheet) return { headers: [], rows: [], meta: { mode: 'error', message: 'Sheet không tồn tại' } };
+    if (!worksheet) return { headers: [], rows: [], meta: {} };
 
-    // --- BƯỚC 1: CHUẨN BỊ DỮ LIỆU GRID VÀ MERGED CELLS (Giữ nguyên logic gốc của bạn) ---
     const normalize = (s) => String(s ?? '')
         .normalize('NFD')
         .replace(/\p{Diacritic}/gu, '')
         .toLowerCase()
         .trim();
 
+    // --- BƯỚC 1: Xây dựng Grid chứa đầy đủ thông tin ô (value và style) ---
     const usedRef = worksheet['!ref'];
     const usedRange = usedRef ? XLSX.utils.decode_range(usedRef) : { s: { r: 0, c: 0 }, e: { r: 0, c: 0 } };
-    const rowCount = usedRange.e.r - usedRange.s.r + 1;
-    const colCount = usedRange.e.c - usedRange.s.c + 1;
-    const grid = Array.from({ length: rowCount }, () => Array.from({ length: colCount }, () => ''));
-    
-    // NEW: Store cell formatting information
-    const styleGrid = Array.from({ length: rowCount }, () => Array.from({ length: colCount }, () => null));
+    const grid = Array.from({ length: usedRange.e.r + 1 }, () => []);
 
     for (let R = usedRange.s.r; R <= usedRange.e.r; R++) {
         for (let C = usedRange.s.c; C <= usedRange.e.c; C++) {
-            const cellAddr = XLSX.utils.encode_cell({ r: R, c: C });
-            const cell = worksheet[cellAddr];
-            const gridR = R - usedRange.s.r;
-            const gridC = C - usedRange.s.c;
-            
-            grid[gridR][gridC] = cell ? cell.v : '';
-            
-            // NEW: Store cell style information
-            if (cell && cell.s) {
-                styleGrid[gridR][gridC] = cell.s;
-            }
+            grid[R][C] = worksheet[XLSX.utils.encode_cell({ r: R, c: C })] || null;
         }
     }
 
     const merges = worksheet['!merges'] || [];
     for (const m of merges) {
-        const topLeft = worksheet[XLSX.utils.encode_cell({ r: m.s.r, c: m.s.c })];
-        const val = topLeft ? topLeft.v : '';
-        const style = topLeft ? topLeft.s : null;
-        
+        const topLeftCell = grid[m.s.r][m.s.c];
         for (let R = m.s.r; R <= m.e.r; R++) {
             for (let C = m.s.c; C <= m.e.c; C++) {
-                const gridR = R - usedRange.s.r;
-                const gridC = C - usedRange.s.c;
-                grid[gridR][gridC] = val;
-                styleGrid[gridR][gridC] = style;
+                grid[R][C] = topLeftCell;
             }
         }
     }
 
-    // --- RULE: A header row is where column 0 == 'STT' and column 1 contains 'Chỉ tiêu' ---
-    for (let r = 0; r < rowCount; r++) {
-        const c0 = normalize(grid[r][0]);
-        const c1 = normalize(grid[r][1]);
-        if (c0 === 'stt' && (c1 === 'chi tieu' || c1.includes('chi tieu'))) {
-            // Use bottom row of merged header block (to avoid duplicating header on the next row)
-            const findMergeBottomRow = (absR, absC) => {
-                for (const m of merges) {
-                    if (absR >= m.s.r && absR <= m.e.r && absC >= m.s.c && absC <= m.e.c) return m.e.r;
-                }
-                return absR;
-            };
-            const absR = usedRange.s.r + r;
-            const bottomR0 = findMergeBottomRow(absR, usedRange.s.c + 0);
-            const bottomR1 = findMergeBottomRow(absR, usedRange.s.c + 1);
-            const effHeaderRel = Math.max(bottomR0, bottomR1) - usedRange.s.r;
-
-            // find right-most used column scanning from the effective header row downward
-            let cEnd = 0;
-            for (let rr = effHeaderRel; rr < rowCount; rr++) {
-                for (let cc = colCount - 1; cc >= 0; cc--) {
-                    if (String(grid[rr][cc] ?? '').toString().trim() !== '') { cEnd = Math.max(cEnd, cc); break; }
-                }
-            }
-            const headers = grid[effHeaderRel].slice(0, cEnd + 1);
-            const rows = [];
-            
-            // Include row with "D" then stop
-            for (let rowIdx = effHeaderRel + 1; rowIdx < grid.length; rowIdx++) {
-                const row = grid[rowIdx].slice(0, cEnd + 1);
-                const sttVal = String(row[0] ?? '').trim().toUpperCase();
-                if (row.some(v => String(v).trim() !== '')) {
-                    // Convert to object format for consistency
-                    const objectRow = row.map(cell => ({ value: cell, isInput: false }));
-                    rows.push(objectRow);
-                }
-                if (sttVal === 'D') break;
-            }
-            
-            return { headers, rows, meta: { mode: 'header-01', headerRow: effHeaderRel + usedRange.s.r + 1, colStart: 1, colEnd: cEnd + 1 } };
-        }
-    }
-
-    // --- BƯỚC 2: LOGIC DÒ TÌM HEADER ĐÃ ĐƯỢC SỬA LỖI ---
+    // --- BƯỚC 2: Dò tìm dòng và các cột tiêu đề quan trọng ---
     const targets = {
         stt: ['stt'],
         chiTieu: ['chi tieu', 'chỉ tiêu'],
-        diemChuan: ['diem chuan', 'điểm chuẩn']
+        keHoach: ['ke hoach', 'kế hoạch'],
+        thucHien: ['thuc hien', 'thực hiện'],
     };
     
-    let headerColumns = { stt: -1, chiTieu: -1, diemChuan: -1 };
-    let effectiveHeaderRow = -1; 
+    let headerColumns = { stt: -1, chiTieu: -1, keHoach: -1, thucHien: -1 };
+    let effectiveHeaderRow = -1;
 
-    for (let r = 0; r < rowCount; r++) {
-        const foundOnRow = { stt: -1, chiTieu: -1, diemChuan: -1 };
-        
-        for (let c = 0; c < colCount; c++) {
-            const n = normalize(grid[r][c]);
-            if (n === '') continue;
+    for (let r = usedRange.s.r; r <= usedRange.e.r; r++) {
+        const foundOnRow = { stt: -1, chiTieu: -1, keHoach: -1, thucHien: -1 };
+        for (let c = usedRange.s.c; c <= usedRange.e.c; c++) {
+            const cell = grid[r][c];
+            const n = normalize(cell?.v);
+            if (!n) continue;
 
-            // *** ĐÂY LÀ THAY ĐỔI QUAN TRỌNG: DÙNG 3 LỆNH IF RIÊNG BIỆT ***
-            // Thay đổi này cho phép tìm tất cả các tiêu đề ngay cả khi chúng nằm trong cùng một ô (thường gặp ở file CSV)
-            if (foundOnRow.stt === -1 && targets.stt.some(t => n.includes(t))) {
-                foundOnRow.stt = c;
-            }
-            if (foundOnRow.chiTieu === -1 && targets.chiTieu.some(t => n.includes(t))) {
-                foundOnRow.chiTieu = c;
-            }
-            if (foundOnRow.diemChuan === -1 && targets.diemChuan.some(t => n.includes(t))) {
-                foundOnRow.diemChuan = c;
-            }
+            if (foundOnRow.stt === -1 && targets.stt.some(t => n.includes(t))) foundOnRow.stt = c;
+            if (foundOnRow.chiTieu === -1 && targets.chiTieu.some(t => n.includes(t))) foundOnRow.chiTieu = c;
+            if (foundOnRow.keHoach === -1 && targets.keHoach.some(t => n.includes(t))) foundOnRow.keHoach = c;
+            if (foundOnRow.thucHien === -1 && targets.thucHien.some(t => n.includes(t))) foundOnRow.thucHien = c;
         }
-        
-        // Kiểm tra xem đã tìm thấy đủ 3 header trên dòng này chưa
-        if (foundOnRow.stt !== -1 && foundOnRow.chiTieu !== -1 && foundOnRow.diemChuan !== -1) {
+
+        if (foundOnRow.stt !== -1 && foundOnRow.chiTieu !== -1) {
             headerColumns = foundOnRow;
-            const findMergeBottomRow = (absR, absC) => {
-                for (const m of merges) {
-                    if (absR >= m.s.r && absR <= m.e.r && absC >= m.s.c && absC <= m.e.c) {
-                        return m.e.r;
-                    }
-                }
-                return absR;
-            };
-            
-            const absR = usedRange.s.r + r;
-            const bottomR1 = findMergeBottomRow(absR, headerColumns.stt);
-            const bottomR2 = findMergeBottomRow(absR, headerColumns.chiTieu);
-            const bottomR3 = findMergeBottomRow(absR, headerColumns.diemChuan);
-            
-            effectiveHeaderRow = Math.max(bottomR1, bottomR2, bottomR3) - usedRange.s.r;
+            effectiveHeaderRow = r;
             break;
         }
     }
 
-    // --- BƯỚC 3: ĐỌC DỮ LIỆU DỰA TRÊN HEADER VỚI FORMATTING ---
+    // --- BƯỚC 3: Đọc dữ liệu và áp dụng logic in nghiêng ---
     if (effectiveHeaderRow !== -1) {
-        // Helper function to check if a cell is italic
-        const isCellItalic = (style) => {
-            if (!style) return false;
-            if (style.font && style.font.italic === true) return true;
-            return false;
-        };
-
-        // Find column indices for 'Kế hoạch' and 'Thực hiện'
-        const findColumnIndex = (headers, searchTerms) => {
-            return headers.findIndex(h => {
-                const normalized = normalize(String(h));
-                return searchTerms.some(term => normalized.includes(term));
-            });
-        };
-
-        const allColumnsIndices = Object.keys(grid[effectiveHeaderRow]).map(Number);
-        const headersOut = allColumnsIndices.map(c => String(grid[effectiveHeaderRow][c] ?? ''));
-        
-        // Find specific columns
-        const keHoachIndex = findColumnIndex(headersOut, ['ke hoach', 'kế hoạch']);
-        const thucHienIndex = findColumnIndex(headersOut, ['thuc hien', 'thực hiện']);
-        
+        const allColumnsIndices = Object.keys(grid[effectiveHeaderRow]).map(Number).filter(c => c >= usedRange.s.c && c <= usedRange.e.c);
+        const headersOut = allColumnsIndices.map(c => String(grid[effectiveHeaderRow][c]?.v ?? ''));
         const rowsOut = [];
-        
-        for (let r = effectiveHeaderRow + 1; r < rowCount; r++) {
-            const sttVal = String(grid[r][headerColumns.stt] ?? '').trim().toUpperCase();
-            
-            // Bỏ qua các dòng có STT trống
+
+        for (let r = effectiveHeaderRow + 1; r <= usedRange.e.r; r++) {
+            const sttCell = grid[r][headerColumns.stt];
+            const sttVal = String(sttCell?.v ?? '').trim();
             if (sttVal === '') continue;
-            
-            // Check if the 'Chỉ tiêu' cell in this row is italic
-            const chiTieuStyle = styleGrid[r] && styleGrid[r][headerColumns.chiTieu];
-            const isChiTieuItalic = isCellItalic(chiTieuStyle);
-            
-            // Create row data with formatting information
-            const rowData = allColumnsIndices.map((c, index) => {
-                const value = grid[r][c] ?? '';
-                let isInput = false;
+
+            const chiTieuCell = grid[r][headerColumns.chiTieu];
+            const isChiTieuItalic = chiTieuCell?.s?.font?.italic === true;
+
+            const rowData = allColumnsIndices.map(c => {
+                const currentCell = grid[r][c];
+                const value = currentCell?.v ?? '';
+                const isInputCell = isChiTieuItalic && (c === headerColumns.keHoach || c === headerColumns.thucHien);
                 
-                // If 'Chỉ tiêu' is italic, mark 'Kế hoạch' and 'Thực hiện' columns as inputs
-                if (isChiTieuItalic && (c === keHoachIndex || c === thucHienIndex)) {
-                    isInput = true;
-                }
-                
-                return { value, isInput };
+                return { value, isInput: isInputCell };
             });
-            
             rowsOut.push(rowData);
-            
-            // Dừng lại SAU KHI đã thêm dòng chứa "D"
-            if (sttVal === 'D') {
-                break;
-            }
         }
 
         return {
             headers: headersOut,
             rows: rowsOut,
-            meta: {
-                mode: 'column-mapping',
-                headerRow: effectiveHeaderRow + usedRange.s.r + 1,
-                columns: { stt: headerColumns.stt + 1, chiTieu: headerColumns.chiTieu + 1, diemChuan: headerColumns.diemChuan + 1 },
-            }
+            meta: { mode: 'column-mapping', headerRow: effectiveHeaderRow + 1, columns: headerColumns }
         };
     }
     
-    // --- CÁC BƯỚC FALLBACK (Dự phòng - Giữ nguyên logic gốc của bạn) ---
-    // Fallback 1: named range 'FORM'
-    try {
-        const names = workbook.Workbook?.Names || [];
-        for (const n of names) {
-            const ref = n.Ref || n.ref;
-            if (!ref) continue;
-            const [sheetLabel, rangeA1] = ref.split('!');
-            const sheetStripped = (sheetLabel || '').replace(/^'/, '').replace(/'$/, '');
-            if ((n.Name || n.name)?.toString().toUpperCase() === 'FORM' && sheetStripped === firstSheetName) {
-                const rng = XLSX.utils.decode_range(rangeA1);
-                const cropped = [];
-                for (let R = rng.s.r; R <= rng.e.r; R++) {
-                    const row = [];
-                    for (let C = rng.s.c; C <= rng.e.c; C++) {
-                        const cell = worksheet[XLSX.utils.encode_cell({ r: R, c: C })];
-                        row.push(cell ? cell.v : '');
-                    }
-                    cropped.push(row);
-                }
-                const [headers = [], ...rows] = cropped;
-                const trimmedRows = rows.filter(r => r.some(cell => String(cell).trim() !== ''));
-                // Convert to object format for consistency
-                const objectRows = trimmedRows.map(row => 
-                    row.map(cell => ({ value: cell, isInput: false }))
-                );
-                return { headers, rows: objectRows, meta: { mode: 'named-range', range: rangeA1 } };
-            }
-        }
-    } catch {}
-
-    // Fallback 2: full sheet
+    // Fallback
     const data = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' });
     const [headers = [], ...rows] = data;
     const trimmedRows = rows.filter(r => r.some(cell => String(cell).trim() !== ''));
-    // Convert to object format for consistency
-    const objectRows = trimmedRows.map(row => 
-        row.map(cell => ({ value: cell, isInput: false }))
-    );
-    return { headers, rows: objectRows, meta: { mode: 'full-sheet' } };
+    return { headers, rows: trimmedRows.map(row => row.map(cell => ({ value: cell, isInput: false }))), meta: { mode: 'full-sheet' } };
 }
 
 function AdminPage() {

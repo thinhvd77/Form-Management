@@ -1,115 +1,12 @@
 import React, { useMemo, useState, useEffect } from 'react';
-import * as XLSX from 'xlsx';
 import './AdminPage.css';
 import { orgData, findNameById } from '../../data/orgData';
 import { makeKey, upsertTemplate, listTemplates, removeTemplate } from '../../services/formTemplates';
 import { TemplatesAPI } from '../../services/api';
 
-// Thay thế hàm parseWorkbookToJSON cũ trong file AdminPage.js của bạn bằng hàm này
-// Thay thế toàn bộ hàm parseWorkbookToJSON cũ bằng phiên bản hoàn chỉnh này
-function parseWorkbookToJSON(workbook) {
-    const firstSheetName = workbook.SheetNames[0];
-    const worksheet = workbook.Sheets[firstSheetName];
-    if (!worksheet) return { headers: [], rows: [], meta: {} };
-
-    const normalize = (s) => String(s ?? '')
-        .normalize('NFD')
-        .replace(/\p{Diacritic}/gu, '')
-        .toLowerCase()
-        .trim();
-
-    // --- BƯỚC 1: Xây dựng Grid chứa đầy đủ thông tin ô (value và style) ---
-    const usedRef = worksheet['!ref'];
-    const usedRange = usedRef ? XLSX.utils.decode_range(usedRef) : { s: { r: 0, c: 0 }, e: { r: 0, c: 0 } };
-    const grid = Array.from({ length: usedRange.e.r + 1 }, () => []);
-
-    for (let R = usedRange.s.r; R <= usedRange.e.r; R++) {
-        for (let C = usedRange.s.c; C <= usedRange.e.c; C++) {
-            grid[R][C] = worksheet[XLSX.utils.encode_cell({ r: R, c: C })] || null;
-        }
-    }
-
-    const merges = worksheet['!merges'] || [];
-    for (const m of merges) {
-        const topLeftCell = grid[m.s.r][m.s.c];
-        for (let R = m.s.r; R <= m.e.r; R++) {
-            for (let C = m.s.c; C <= m.e.c; C++) {
-                grid[R][C] = topLeftCell;
-            }
-        }
-    }
-
-    // --- BƯỚC 2: Dò tìm dòng và các cột tiêu đề quan trọng ---
-    const targets = {
-        stt: ['stt'],
-        chiTieu: ['chi tieu', 'chỉ tiêu'],
-        keHoach: ['ke hoach', 'kế hoạch'],
-        thucHien: ['thuc hien', 'thực hiện'],
-    };
-    
-    let headerColumns = { stt: -1, chiTieu: -1, keHoach: -1, thucHien: -1 };
-    let effectiveHeaderRow = -1;
-
-    for (let r = usedRange.s.r; r <= usedRange.e.r; r++) {
-        const foundOnRow = { stt: -1, chiTieu: -1, keHoach: -1, thucHien: -1 };
-        for (let c = usedRange.s.c; c <= usedRange.e.c; c++) {
-            const cell = grid[r][c];
-            const n = normalize(cell?.v);
-            if (!n) continue;
-
-            if (foundOnRow.stt === -1 && targets.stt.some(t => n.includes(t))) foundOnRow.stt = c;
-            if (foundOnRow.chiTieu === -1 && targets.chiTieu.some(t => n.includes(t))) foundOnRow.chiTieu = c;
-            if (foundOnRow.keHoach === -1 && targets.keHoach.some(t => n.includes(t))) foundOnRow.keHoach = c;
-            if (foundOnRow.thucHien === -1 && targets.thucHien.some(t => n.includes(t))) foundOnRow.thucHien = c;
-        }
-
-        if (foundOnRow.stt !== -1 && foundOnRow.chiTieu !== -1) {
-            headerColumns = foundOnRow;
-            effectiveHeaderRow = r;
-            break;
-        }
-    }
-
-    // --- BƯỚC 3: Đọc dữ liệu và áp dụng logic in nghiêng ---
-    if (effectiveHeaderRow !== -1) {
-        const allColumnsIndices = Object.keys(grid[effectiveHeaderRow]).map(Number).filter(c => c >= usedRange.s.c && c <= usedRange.e.c);
-        const headersOut = allColumnsIndices.map(c => String(grid[effectiveHeaderRow][c]?.v ?? ''));
-        const rowsOut = [];
-
-        for (let r = effectiveHeaderRow + 1; r <= usedRange.e.r; r++) {
-            const sttCell = grid[r][headerColumns.stt];
-            const sttVal = String(sttCell?.v ?? '').trim();
-            if (sttVal === '') continue;
-
-            const chiTieuCell = grid[r][headerColumns.chiTieu];
-            const isChiTieuItalic = chiTieuCell?.s?.font?.italic === true;
-
-            const rowData = allColumnsIndices.map(c => {
-                const currentCell = grid[r][c];
-                const value = currentCell?.v ?? '';
-                const isInputCell = isChiTieuItalic && (c === headerColumns.keHoach || c === headerColumns.thucHien);
-                
-                return { value, isInput: isInputCell };
-            });
-            rowsOut.push(rowData);
-        }
-
-        return {
-            headers: headersOut,
-            rows: rowsOut,
-            meta: { mode: 'column-mapping', headerRow: effectiveHeaderRow + 1, columns: headerColumns }
-        };
-    }
-    
-    // Fallback
-    const data = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' });
-    const [headers = [], ...rows] = data;
-    const trimmedRows = rows.filter(r => r.some(cell => String(cell).trim() !== ''));
-    return { headers, rows: trimmedRows.map(row => row.map(cell => ({ value: cell, isInput: false }))), meta: { mode: 'full-sheet' } };
-}
-
 function AdminPage() {
   const [fileName, setFileName] = useState('');
+  const [selectedFile, setSelectedFile] = useState(null);
   const [headers, setHeaders] = useState([]);
   const [rows, setRows] = useState([]);
   const [error, setError] = useState('');
@@ -138,34 +35,12 @@ function AdminPage() {
     setInfo('');
     setHeaders([]);
     setRows([]);
+    setSelectedFile(null);
     if (!file) return;
-    try {
-      setFileName(file.name);
-      const ab = await file.arrayBuffer();
-      const wb = XLSX.read(ab, { type: 'array', cellStyles: true });
-      const { headers, rows, meta } = parseWorkbookToJSON(wb);
-      if (!headers.length) {
-        setError('No headers found in the first row.');
-      }
-      setHeaders(headers);
-      setRows(rows);
-      if (meta?.mode === 'header-01') {
-        setInfo(`Tiêu đề xác định theo quy tắc (cột 1='STT', cột 2 chứa 'Chỉ tiêu') tại hàng r=${meta.headerRow}, c=1..${meta.colEnd}.`);
-      } else if (meta?.mode === 'column-mapping') {
-        const skipNote = meta?.skippedTop ? ` (đã bỏ qua ${meta.skippedTop} hàng đầu)` : '';
-        setInfo(`Đã dò và ánh xạ cột (STT c=${meta.columns?.stt}, Chỉ tiêu c=${meta.columns?.chiTieu}, Điểm chuẩn c=${meta.columns?.diemChuan}), tiêu đề tại hàng r=${meta.headerRow}${skipNote}.`);
-      } else if (meta?.mode === 'header-detected') {
-        const skipNote = meta?.skippedTop ? ` (đã bỏ qua ${meta.skippedTop} hàng đầu)` : '';
-        setInfo(`Hiển thị từ hàng tiêu đề (r=${meta.headerRow}, c=${meta.colStart}..${meta.colEnd})${skipNote}.`);
-      } else if (meta?.mode === 'named-range') {
-        setInfo(`Đang hiển thị vùng đặt tên FORM: ${meta.range}`);
-      } else {
-        setInfo('Không tìm thấy tiêu đề hoặc vùng FORM. Hiển thị toàn bộ sheet.');
-      }
-    } catch (e) {
-      console.error(e);
-      setError('Failed to parse the Excel file. Please check the format.');
-    }
+    
+    setFileName(file.name);
+    setSelectedFile(file);
+    setInfo('File selected. Choose a group and click "Import & Save" to upload and parse on server.');
   };
 
   const previewRows = useMemo(() => rows.slice(0, 20), [rows]);
@@ -173,19 +48,26 @@ function AdminPage() {
   const departments = useMemo(() => (branchId ? orgData.departments[branchId] || [] : []), [branchId]);
   const positions = useMemo(() => (departmentId ? orgData.positions[departmentId] || [] : []), [departmentId]);
 
-  const canSave = branchId && departmentId && positionId && rows.length > 0;
+  const canSave = branchId && departmentId && positionId && selectedFile;
 
   const handleSaveGroup = async () => {
     if (!canSave) return;
-    const key = makeKey(branchId, departmentId, positionId);
-    const payload = { branchId, departmentId, positionId, headers, rows, sourceFile: fileName, key };
+    setError('');
+    setInfo('Uploading and parsing Excel file...');
+    
     try {
-      await TemplatesAPI.upsert(payload);
+      const result = await TemplatesAPI.importExcel(selectedFile, branchId, departmentId, positionId);
+      setHeaders(result.headers || []);
+      setRows(result.rows || []);
+      setInfo(`Successfully imported Excel file! Parsed ${result.rows?.length || 0} rows.`);
+      
+      // Refresh templates list
       const res = await TemplatesAPI.list();
       setTemplates(res.items || []);
-    } catch {
-      upsertTemplate(key, payload);
-      setTemplates(listTemplates());
+    } catch (e) {
+      console.error(e);
+      setError(e.message || 'Failed to import Excel file');
+      setInfo('');
     }
   };
 
@@ -243,21 +125,30 @@ function AdminPage() {
 
   const clearSelection = () => setSelectedKeys(new Set());
 
-  const canBulkAssign = rows.length > 0 && selectedKeys.size > 0;
+  const canBulkAssign = selectedFile && selectedKeys.size > 0;
 
   const handleBulkAssign = async () => {
     if (!canBulkAssign) return;
+    setError('');
+    setInfo('Uploading and parsing Excel file for bulk assignment...');
+    
     const keys = Array.from(selectedKeys);
     try {
-      await TemplatesAPI.bulk({ keys, headers, rows, sourceFile: fileName });
+      const result = await TemplatesAPI.importExcelBulk(selectedFile, keys);
+      setHeaders(result.items?.[0]?.headers || []);
+      setRows(result.items?.[0]?.rows || []);
+      setInfo(`Successfully imported Excel file to ${result.items?.length || 0} groups! Parsed ${result.items?.[0]?.rows?.length || 0} rows.`);
+      
+      // Refresh templates list
       const res = await TemplatesAPI.list();
       setTemplates(res.items || []);
-    } catch {
-      keys.forEach(key => {
-        const [bId, dId, pId] = key.split('|');
-        upsertTemplate(key, { branchId: bId, departmentId: dId, positionId: pId, headers, rows, sourceFile: fileName });
-      });
-      setTemplates(listTemplates());
+      
+      // Clear selection after successful bulk assign
+      setSelectedKeys(new Set());
+    } catch (e) {
+      console.error(e);
+      setError(e.message || 'Failed to bulk import Excel file');
+      setInfo('');
     }
   };
 
@@ -265,7 +156,7 @@ function AdminPage() {
     <div className="admin-container">
       <div className="admin-card">
         <h1>Admin: Import Excel & Preview</h1>
-        <p className="muted">Upload an .xlsx or .xls file. First row should be column headers.</p>
+        <p className="muted">Upload an .xlsx or .xls file. The backend will parse it with style-aware detection and save to database.</p>
 
         <div className="upload">
           <label htmlFor="excel-input" className="btn btn-primary">Choose Excel</label>
@@ -296,7 +187,7 @@ function AdminPage() {
             <option value="">-- Chọn Chức vụ --</option>
             {positions.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
-          <button className="btn btn-primary" disabled={!canSave} onClick={handleSaveGroup}>Lưu nhóm form</button>
+          <button className="btn btn-primary" disabled={!canSave} onClick={handleSaveGroup}>Import & Save</button>
         </div>
 
         {/* Bulk select list of all combinations */}
@@ -306,7 +197,7 @@ function AdminPage() {
             <div className="combo-actions">
               <button className="btn" onClick={toggleSelectAll}>{allSelected ? 'Bỏ chọn tất cả' : 'Chọn tất cả'}</button>
               <button className="btn" onClick={clearSelection}>Xóa lựa chọn</button>
-              <button className="btn btn-primary" disabled={!canBulkAssign} onClick={handleBulkAssign}>Gán form cho nhóm đã chọn</button>
+              <button className="btn btn-primary" disabled={!canBulkAssign} onClick={handleBulkAssign}>Import & Assign to Selected Groups</button>
             </div>
           </div>
           <div className="combo-list">

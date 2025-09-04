@@ -147,23 +147,6 @@ function AdminPage() {
         {error && <div className="alert error">{error}</div>}
         {info && !error && <div className="alert note">{info}</div>}
 
-        {/* Chọn nhóm đơn để lưu */}
-        <div className="selectors">
-          <select value={branchId} onChange={(e) => { setBranchId(e.target.value); setDepartmentId(''); setPositionId(''); }} className="picker">
-            <option value="">-- Chọn Chi nhánh --</option>
-            {orgData.branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-          </select>
-          <select value={departmentId} onChange={(e) => { setDepartmentId(e.target.value); setPositionId(''); }} className="picker" disabled={!branchId}>
-            <option value="">-- Chọn Phòng ban --</option>
-            {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
-          </select>
-          <select value={positionId} onChange={(e) => setPositionId(e.target.value)} className="picker" disabled={!departmentId}>
-            <option value="">-- Chọn Chức vụ --</option>
-            {positions.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-          </select>
-          <button className="btn btn-primary" disabled={!canSave} onClick={handleSaveGroup}>Import & Lưu nhóm</button>
-        </div>
-
         {/* Bulk select list */}
         <div className="combos">
           <div className="combos-header">

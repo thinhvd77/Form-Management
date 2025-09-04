@@ -86,14 +86,19 @@ const EvaluationForm = () => {
     .toLowerCase()
     .trim();
 
-  // Determine editable columns: "Kế hoạch", "Thực hiện"
+  // Determine editable columns: "Kế hoạch", "Thực hiện" (only for legacy mode)
   const editableColIndices = useMemo(() => {
+    // If using fill-only mode, don't use column-based detection
+    if (template?.meta?.inputMode === 'fill-only') {
+      return [];
+    }
+    
     return headers.reduce((acc, h, idx) => {
       const n = normalize(h);
       if (n === 'ke hoach' || n === 'thuc hien') acc.push(idx);
       return acc;
     }, []);
-  }, [headers]);
+  }, [headers, template]);
 
   // Initialize editableRows when rows change
   useEffect(() => {
@@ -235,7 +240,8 @@ const EvaluationForm = () => {
                           const cellData = row?.[cidx];
                           
                           // Handle new object structure from Excel with formatting
-                          if (cellData && typeof cellData === 'object' && cellData.hasOwnProperty('value')) {
+                          // Treat any object coming from Excel/DB that has either `isInput` or `value` as a formatted cell
+                          if (cellData && typeof cellData === 'object' && ('isInput' in cellData || 'value' in cellData)) {
                             return (
                               <td key={cidx} className={cellData.isInput ? 'input-required' : ''}>
                                 {cellData.isInput ? (
@@ -253,7 +259,7 @@ const EvaluationForm = () => {
                           }
                           
                           // Handle legacy editable columns logic
-                          const isEditable = editableColIndices.includes(cidx);
+                          const isEditable = false;
                           
                           // Extract value safely regardless of data structure
                           const displayValue = typeof cellData === 'object' && cellData !== null 

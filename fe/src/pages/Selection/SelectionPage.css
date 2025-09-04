@@ -1,0 +1,190 @@
+/* EvaluationForm.css */
+
+/* --- Cài đặt chung & Font --- */
+.page-container {
+    background-color: #f3f4f6; /* Tương đương bg-gray-100 */
+    padding: 2rem;
+    font-family: 'Inter', sans-serif;
+}
+
+/* --- Thẻ chính chứa toàn bộ form --- */
+.evaluation-card {
+    max-width: 80rem; /* Tương đương max-w-7xl */
+    margin: auto;
+    background-color: white;
+    border-radius: 1rem; /* Tương đương rounded-2xl */
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05); /* Tương đương shadow-lg */
+    padding: 2rem;
+}
+
+/* --- Khu vực tiêu đề --- */
+.header-section {
+    text-align: center;
+    margin-bottom: 2rem;
+}
+
+.header-section h1 {
+    font-size: 1.875rem; /* Tương đương text-3xl */
+    font-weight: 700;
+    color: #1f2937; /* Tương đương text-gray-800 */
+}
+
+.header-section p {
+    color: #6b7280; /* Tương đương text-gray-500 */
+    margin-top: 0.5rem;
+}
+
+/* --- Khu vực lựa chọn (Grid) --- */
+.selection-grid {
+    display: grid;
+    grid-template-columns: repeat(1, 1fr); /* Mặc định 1 cột */
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+    padding: 1.5rem;
+    background-color: #f9fafb; /* Tương đương bg-gray-50 */
+    border-radius: 0.5rem;
+    border: 1px solid #e5e7eb; /* Tương đương border-gray-200 */
+}
+
+/* Responsive: 3 cột trên màn hình lớn hơn */
+@media (min-width: 768px) {
+    .selection-grid {
+        grid-template-columns: repeat(3, 1fr);
+    }
+}
+
+.select-group label {
+    display: block;
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: #374151; /* Tương đương text-gray-700 */
+    margin-bottom: 0.5rem;
+}
+
+.select-group .icon {
+    margin-right: 0.5rem;
+    color: #9ca3af; /* Tương đương text-gray-400 */
+}
+
+/* --- Định dạng chung cho Select --- */
+.custom-select {
+    width: 100%;
+    padding: 0.75rem;
+    border: 1px solid #d1d5db;
+    border-radius: 0.5rem;
+    box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+    transition: all 0.2s ease-in-out;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke-width='1.5' stroke='%236b7280' class='w-6 h-6'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' d='M19.5 8.25l-7.5 7.5-7.5-7.5' /%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.75rem center;
+    background-size: 1.5em 1.5em;
+    padding-right: 2.5rem;
+}
+
+.custom-select:disabled {
+    background-color: #f3f4f6;
+    cursor: not-allowed;
+}
+
+.custom-select:focus {
+    outline: none;
+    border-color: #4f46e5; /* Tương đương border-indigo-500 */
+    box-shadow: 0 0 0 2px rgba(79, 70, 229, 0.5); /* Tương đương ring-2 ring-indigo-500 */
+}
+
+/* --- Bảng đánh giá & Hiệu ứng --- */
+.evaluation-table-container {
+    opacity: 0;
+    transform: translateY(20px);
+    transition: opacity 0.5s ease-out, transform 0.5s ease-out;
+    pointer-events: none;
+}
+
+.evaluation-table-container.visible {
+    opacity: 1;
+    transform: translateY(0);
+    pointer-events: auto;
+}
+
+.evaluation-table-container h2 {
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: #374151;
+    margin-bottom: 1rem;
+}
+
+.table-wrapper {
+    overflow-x: auto;
+    border: 1px solid #e5e7eb;
+    border-radius: 0.5rem;
+}
+
+.results-table {
+    min-width: 100%;
+    border-collapse: collapse;
+}
+
+.results-table thead {
+    background-color: #f9fafb;
+}
+
+.results-table th, .results-table td {
+    padding: 0.75rem 1.5rem;
+    text-align: left;
+    border-bottom: 1px solid #e5e7eb;
+}
+
+.results-table th {
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: #4b5563;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.results-table td {
+    font-size: 0.875rem;
+    color: #374151;
+}
+
+.results-table .text-center {
+    text-align: center;
+}
+
+/* --- Nút bấm --- */
+.action-buttons {
+    margin-top: 2rem;
+    display: flex;
+    justify-content: flex-end;
+    gap: 1rem;
+}
+
+.btn {
+    padding: 0.5rem 1.5rem;
+    font-weight: 600;
+    border-radius: 0.5rem;
+    border: none;
+    cursor: pointer;
+    transition: all 0.2s ease-in-out;
+}
+
+.btn-secondary {
+    background-color: #e5e7eb;
+    color: #374151;
+}
+
+.btn-secondary:hover {
+    background-color: #d1d5db;
+}
+
+.btn-primary {
+    background-color: #4f46e5;
+    color: white;
+}
+
+.btn-primary:hover {
+    background-color: #4338ca;
+}

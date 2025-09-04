@@ -3,35 +3,126 @@
 /* --- Cài đặt chung & Font --- */
 .page-container {
     background-color: #f3f4f6; /* Tương đương bg-gray-100 */
-    padding: 2rem;
     font-family: 'Inter', sans-serif;
 }
 
 /* --- Thẻ chính chứa toàn bộ form --- */
 .evaluation-card {
-    max-width: 80rem; /* Tương đương max-w-7xl */
+    max-width: 100rem; /* Tương đương max-w-7xl */
     margin: auto;
+    padding: 0.5rem;
     background-color: white;
-    border-radius: 1rem; /* Tương đương rounded-2xl */
-    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05); /* Tương đương shadow-lg */
-    padding: 2rem;
 }
 
 /* --- Khu vực tiêu đề --- */
 .header-section {
     text-align: center;
-    margin-bottom: 2rem;
+    margin-bottom: 0.5rem;
 }
 
 .header-section h1 {
     font-size: 1.875rem; /* Tương đương text-3xl */
     font-weight: 700;
     color: #1f2937; /* Tương đương text-gray-800 */
+    margin: 0;
 }
 
-.header-section p {
-    color: #6b7280; /* Tương đương text-gray-500 */
-    margin-top: 0.5rem;
+/* --- Khu vực thông tin cá nhân --- */
+.personal-info-section {
+    margin-bottom: 2rem;
+    padding: 1.5rem;
+    background-color: #f8fafc; /* Tương đương bg-slate-50 */
+    border-radius: 0.5rem;
+    border: 1px solid #e2e8f0; /* Tương đương border-slate-200 */
+}
+
+.personal-info-section h3 {
+    font-size: 1.125rem; /* Tương đương text-lg */
+    font-weight: 600;
+    color: #1e293b; /* Tương đương text-slate-800 */
+    margin-bottom: 1rem;
+    margin-top: 0;
+}
+
+.personal-info-grid {
+    display: grid;
+    grid-template-columns: repeat(1, 1fr); /* Mặc định 1 cột */
+    gap: 1.5rem;
+}
+
+/* Responsive: 2 cột trên màn hình lớn hơn */
+@media (min-width: 768px) {
+    .personal-info-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+.input-group label {
+    display: block;
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: #374151; /* Tương đương text-gray-700 */
+    margin-bottom: 0.5rem;
+}
+
+.input-group .icon {
+    margin-right: 0.5rem;
+    color: #9ca3af; /* Tương đương text-gray-400 */
+}
+
+/* --- Định dạng chung cho Input --- */
+.custom-input {
+    width: 100%;
+    padding: 0.75rem;
+    border: 1px solid #d1d5db;
+    border-radius: 0.5rem;
+    box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+    transition: all 0.2s ease-in-out;
+    font-size: 0.875rem;
+    color: #374151;
+}
+
+.custom-input:focus {
+    outline: none;
+    border-color: #4f46e5; /* Tương đương border-indigo-500 */
+    box-shadow: 0 0 0 2px rgba(79, 70, 229, 0.5); /* Tương đương ring-2 ring-indigo-500 */
+}
+
+.custom-input:disabled {
+    background-color: #f3f4f6;
+    cursor: not-allowed;
+    color: #9ca3af;
+}
+
+.custom-input::placeholder {
+    color: #9ca3af; /* Tương đương placeholder-gray-400 */
+}
+
+/* Input required cells (from Excel italic formatting) */
+.input-required {
+    background-color: #fef3c7 !important; /* Yellow background */
+    border-left: 3px solid #f59e0b; /* Orange left border */
+    position: relative;
+}
+
+.input-required::before {
+    content: "📝";
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    font-size: 10px;
+    opacity: 0.7;
+    pointer-events: none;
+}
+
+.input-required .custom-input {
+    background-color: white;
+    border: 1px solid #f59e0b;
+}
+
+.input-required .custom-input:focus {
+    border-color: #d97706;
+    box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.2);
 }
 
 /* --- Khu vực lựa chọn (Grid) --- */
@@ -44,6 +135,15 @@
     background-color: #f9fafb; /* Tương đương bg-gray-50 */
     border-radius: 0.5rem;
     border: 1px solid #e5e7eb; /* Tương đương border-gray-200 */
+}
+
+.selection-grid h3 {
+    font-size: 1.125rem; /* Tương đương text-lg */
+    font-weight: 600;
+    color: #1e293b; /* Tương đương text-slate-800 */
+    margin-bottom: 0;
+    margin-top: 0;
+    grid-column: 1 / -1; /* Span across all columns */
 }
 
 /* Responsive: 3 cột trên màn hình lớn hơn */
@@ -95,18 +195,9 @@
     box-shadow: 0 0 0 2px rgba(79, 70, 229, 0.5); /* Tương đương ring-2 ring-indigo-500 */
 }
 
-/* --- Bảng đánh giá & Hiệu ứng --- */
+/* --- Bảng đánh giá --- */
 .evaluation-table-container {
-    opacity: 0;
-    transform: translateY(20px);
-    transition: opacity 0.5s ease-out, transform 0.5s ease-out;
-    pointer-events: none;
-}
-
-.evaluation-table-container.visible {
-    opacity: 1;
-    transform: translateY(0);
-    pointer-events: auto;
+    margin-top: 2rem;
 }
 
 .evaluation-table-container h2 {

@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faBuilding, faUsers, faUserTie } from '@fortawesome/free-solid-svg-icons';
+import { faBuilding, faUsers, faUserTie, faUser, faIdCard } from '@fortawesome/free-solid-svg-icons';
+import { PageHeader } from '../../components';
 import './SelectionPage.css'; // Import file CSS thuần
 import { orgData } from '../../data/orgData';
 import { getTemplate, makeKey } from '../../services/formTemplates';
@@ -15,6 +16,8 @@ const EvaluationForm = () => {
   const [selectedBranch, setSelectedBranch] = useState('');
   const [selectedDepartment, setSelectedDepartment] = useState('');
   const [selectedPosition, setSelectedPosition] = useState('');
+  const [fullName, setFullName] = useState('');
+  const [employeeId, setEmployeeId] = useState('');
   const [departments, setDepartments] = useState([]);
   const [positions, setPositions] = useState([]);
   const [isTableVisible, setIsTableVisible] = useState(false);
@@ -44,8 +47,13 @@ const EvaluationForm = () => {
   const handlePositionChange = (e) => {
     const positionId = e.target.value;
     setSelectedPosition(positionId);
-    setIsTableVisible(!!positionId);
   };
+
+  // Update table visibility when all required fields are filled
+  useEffect(() => {
+    const allFieldsFilled = fullName.trim() && employeeId.trim() && selectedBranch && selectedDepartment && selectedPosition;
+    setIsTableVisible(allFieldsFilled);
+  }, [fullName, employeeId, selectedBranch, selectedDepartment, selectedPosition]);
 
   // Khi đã chọn đủ 3 yếu tố, lấy template tương ứng từ backend; fallback local
   useEffect(() => {
@@ -106,11 +114,45 @@ const EvaluationForm = () => {
     <div className="page-container">
       <div className="evaluation-card">
         <div className="header-section">
-          <h1>Biểu Mẫu Tự Đánh Giá Mức Độ Hoàn Thành Công Việc</h1>
-          <p>Vui lòng hoàn thành các lựa chọn bên dưới để hiển thị biểu mẫu đánh giá.</p>
+          <h1>Vui lòng hoàn thành các lựa chọn bên dưới để hiển thị biểu mẫu đánh giá.</h1>
+        </div>
+
+        <div className="personal-info-section">
+          <h3>Thông tin cá nhân</h3>
+          <div className="personal-info-grid">
+            <div className="input-group">
+              <label htmlFor="fullName">
+                <FontAwesomeIcon icon={faUser} className="icon" />
+                Họ và Tên
+              </label>
+              <input
+                id="fullName"
+                type="text"
+                className="custom-input"
+                value={fullName}
+                onChange={(e) => setFullName(e.target.value)}
+                placeholder="Nhập họ và tên"
+              />
+            </div>
+            <div className="input-group">
+              <label htmlFor="employeeId">
+                <FontAwesomeIcon icon={faIdCard} className="icon" />
+                Mã nhân viên
+              </label>
+              <input
+                id="employeeId"
+                type="text"
+                className="custom-input"
+                value={employeeId}
+                onChange={(e) => setEmployeeId(e.target.value)}
+                placeholder="Nhập mã nhân viên"
+              />
+            </div>
+          </div>
         </div>
 
         <div className="selection-grid">
+          <h3>Thông tin vị trí công việc</h3>
           <div className="select-group">
             <label htmlFor="branch-select">
               <FontAwesomeIcon icon={faBuilding} className="icon" />
@@ -149,14 +191,22 @@ const EvaluationForm = () => {
           </div>
         </div>
 
-        <div className={`evaluation-table-container ${isTableVisible ? 'visible' : ''}`}>
+        <div className="evaluation-table-container">
           <h2>Nội dung đánh giá</h2>
-          {!template && (
+          {!isTableVisible && (
+            <p style={{ color: '#6b7280', marginBottom: 12 }}>
+              Vui lòng điền đầy đủ thông tin cá nhân và chọn chi nhánh, phòng ban, chức vụ để hiển thị biểu mẫu đánh giá.
+            </p>
+          )}
+          {isTableVisible && !template && (
             <p style={{ color: '#6b7280', marginBottom: 12 }}>
               Chưa có mẫu form cho lựa chọn này. Vui lòng liên hệ Admin để tạo nhóm form.
             </p>
           )}
-          <div className="table-wrapper">
+          
+          {isTableVisible && (
+            <>
+            <div className="table-wrapper">
             <table className="results-table">
               <thead>
                 {headers.length > 0 ? (
@@ -182,17 +232,45 @@ const EvaluationForm = () => {
                     <tr key={ridx}>
                       {headers.length > 0 ? (
                         headers.map((_, cidx) => {
+                          const cellData = row?.[cidx];
+                          
+                          // Handle new object structure from Excel with formatting
+                          if (cellData && typeof cellData === 'object' && cellData.hasOwnProperty('value')) {
+                            return (
+                              <td key={cidx} className={cellData.isInput ? 'input-required' : ''}>
+                                {cellData.isInput ? (
+                                  <input
+                                    className="custom-input"
+                                    value={cellData.value ?? ''}
+                                    onChange={(e) => handleCellChange(ridx, cidx, { ...cellData, value: e.target.value })}
+                                    placeholder="Nhập giá trị..."
+                                  />
+                                ) : (
+                                  cellData.value ?? ''
+                                )}
+                              </td>
+                            );
+                          }
+                          
+                          // Handle legacy editable columns logic
                           const isEditable = editableColIndices.includes(cidx);
+                          
+                          // Extract value safely regardless of data structure
+                          const displayValue = typeof cellData === 'object' && cellData !== null 
+                            ? (cellData.value ?? '') 
+                            : (cellData ?? '');
+                            
                           return (
                             <td key={cidx}>
                               {isEditable ? (
                                 <input
-                                  className="custom-select"
-                                  value={row?.[cidx] ?? ''}
+                                  className="custom-input"
+                                  value={displayValue}
                                   onChange={(e) => handleCellChange(ridx, cidx, e.target.value)}
+                                  placeholder="Nhập giá trị..."
                                 />
                               ) : (
-                                row?.[cidx] ?? ''
+                                displayValue
                               )}
                             </td>
                           );
@@ -225,11 +303,13 @@ const EvaluationForm = () => {
                 )}
               </tbody>
             </table>
-          </div>
-          <div className="action-buttons">
-            <button type="button" className="btn btn-secondary">Lưu Nháp</button>
-            <button type="submit" className="btn btn-primary">Nộp Đánh Giá</button>
-          </div>
+            </div>
+            <div className="action-buttons">
+              <button type="button" className="btn btn-secondary">Lưu Nháp</button>
+              <button type="submit" className="btn btn-primary">Nộp Đánh Giá</button>
+            </div>
+            </>
+          )}
         </div>
       </div>
     </div>

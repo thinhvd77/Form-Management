@@ -23,11 +23,23 @@ function parseWorkbookToJSON(workbook) {
     const rowCount = usedRange.e.r - usedRange.s.r + 1;
     const colCount = usedRange.e.c - usedRange.s.c + 1;
     const grid = Array.from({ length: rowCount }, () => Array.from({ length: colCount }, () => ''));
+    
+    // NEW: Store cell formatting information
+    const styleGrid = Array.from({ length: rowCount }, () => Array.from({ length: colCount }, () => null));
 
     for (let R = usedRange.s.r; R <= usedRange.e.r; R++) {
         for (let C = usedRange.s.c; C <= usedRange.e.c; C++) {
-            const cell = worksheet[XLSX.utils.encode_cell({ r: R, c: C })];
-            grid[R - usedRange.s.r][C - usedRange.s.c] = cell ? cell.v : '';
+            const cellAddr = XLSX.utils.encode_cell({ r: R, c: C });
+            const cell = worksheet[cellAddr];
+            const gridR = R - usedRange.s.r;
+            const gridC = C - usedRange.s.c;
+            
+            grid[gridR][gridC] = cell ? cell.v : '';
+            
+            // NEW: Store cell style information
+            if (cell && cell.s) {
+                styleGrid[gridR][gridC] = cell.s;
+            }
         }
     }
 
@@ -35,9 +47,14 @@ function parseWorkbookToJSON(workbook) {
     for (const m of merges) {
         const topLeft = worksheet[XLSX.utils.encode_cell({ r: m.s.r, c: m.s.c })];
         const val = topLeft ? topLeft.v : '';
+        const style = topLeft ? topLeft.s : null;
+        
         for (let R = m.s.r; R <= m.e.r; R++) {
             for (let C = m.s.c; C <= m.e.c; C++) {
-                grid[R - usedRange.s.r][C - usedRange.s.c] = val;
+                const gridR = R - usedRange.s.r;
+                const gridC = C - usedRange.s.c;
+                grid[gridR][gridC] = val;
+                styleGrid[gridR][gridC] = style;
             }
         }
     }
@@ -74,7 +91,9 @@ function parseWorkbookToJSON(workbook) {
                 const row = grid[rowIdx].slice(0, cEnd + 1);
                 const sttVal = String(row[0] ?? '').trim().toUpperCase();
                 if (row.some(v => String(v).trim() !== '')) {
-                    rows.push(row);
+                    // Convert to object format for consistency
+                    const objectRow = row.map(cell => ({ value: cell, isInput: false }));
+                    rows.push(objectRow);
                 }
                 if (sttVal === 'D') break;
             }
@@ -135,21 +154,56 @@ function parseWorkbookToJSON(workbook) {
         }
     }
 
-    // --- BƯỚC 3: ĐỌC DỮ LIỆU DỰA TRÊN HEADER ---
+    // --- BƯỚC 3: ĐỌC DỮ LIỆU DỰA TRÊN HEADER VỚI FORMATTING ---
     if (effectiveHeaderRow !== -1) {
+        // Helper function to check if a cell is italic
+        const isCellItalic = (style) => {
+            if (!style) return false;
+            if (style.font && style.font.italic === true) return true;
+            return false;
+        };
+
+        // Find column indices for 'Kế hoạch' and 'Thực hiện'
+        const findColumnIndex = (headers, searchTerms) => {
+            return headers.findIndex(h => {
+                const normalized = normalize(String(h));
+                return searchTerms.some(term => normalized.includes(term));
+            });
+        };
+
         const allColumnsIndices = Object.keys(grid[effectiveHeaderRow]).map(Number);
         const headersOut = allColumnsIndices.map(c => String(grid[effectiveHeaderRow][c] ?? ''));
+        
+        // Find specific columns
+        const keHoachIndex = findColumnIndex(headersOut, ['ke hoach', 'kế hoạch']);
+        const thucHienIndex = findColumnIndex(headersOut, ['thuc hien', 'thực hiện']);
+        
         const rowsOut = [];
         
         for (let r = effectiveHeaderRow + 1; r < rowCount; r++) {
-            const rowVals = allColumnsIndices.map(c => grid[r][c] ?? '');
             const sttVal = String(grid[r][headerColumns.stt] ?? '').trim().toUpperCase();
             
             // Bỏ qua các dòng có STT trống
             if (sttVal === '') continue;
             
-            // Thêm dòng vào kết quả
-            rowsOut.push(rowVals);
+            // Check if the 'Chỉ tiêu' cell in this row is italic
+            const chiTieuStyle = styleGrid[r] && styleGrid[r][headerColumns.chiTieu];
+            const isChiTieuItalic = isCellItalic(chiTieuStyle);
+            
+            // Create row data with formatting information
+            const rowData = allColumnsIndices.map((c, index) => {
+                const value = grid[r][c] ?? '';
+                let isInput = false;
+                
+                // If 'Chỉ tiêu' is italic, mark 'Kế hoạch' and 'Thực hiện' columns as inputs
+                if (isChiTieuItalic && (c === keHoachIndex || c === thucHienIndex)) {
+                    isInput = true;
+                }
+                
+                return { value, isInput };
+            });
+            
+            rowsOut.push(rowData);
             
             // Dừng lại SAU KHI đã thêm dòng chứa "D"
             if (sttVal === 'D') {
@@ -190,7 +244,11 @@ function parseWorkbookToJSON(workbook) {
                 }
                 const [headers = [], ...rows] = cropped;
                 const trimmedRows = rows.filter(r => r.some(cell => String(cell).trim() !== ''));
-                return { headers, rows: trimmedRows, meta: { mode: 'named-range', range: rangeA1 } };
+                // Convert to object format for consistency
+                const objectRows = trimmedRows.map(row => 
+                    row.map(cell => ({ value: cell, isInput: false }))
+                );
+                return { headers, rows: objectRows, meta: { mode: 'named-range', range: rangeA1 } };
             }
         }
     } catch {}
@@ -199,7 +257,11 @@ function parseWorkbookToJSON(workbook) {
     const data = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' });
     const [headers = [], ...rows] = data;
     const trimmedRows = rows.filter(r => r.some(cell => String(cell).trim() !== ''));
-    return { headers, rows: trimmedRows, meta: { mode: 'full-sheet' } };
+    // Convert to object format for consistency
+    const objectRows = trimmedRows.map(row => 
+        row.map(cell => ({ value: cell, isInput: false }))
+    );
+    return { headers, rows: objectRows, meta: { mode: 'full-sheet' } };
 }
 
 function AdminPage() {
@@ -236,8 +298,8 @@ function AdminPage() {
     try {
       setFileName(file.name);
       const ab = await file.arrayBuffer();
-      const wb = XLSX.read(ab, { type: 'array' });
-  const { headers, rows, meta } = parseWorkbookToJSON(wb);
+      const wb = XLSX.read(ab, { type: 'array', cellStyles: true });
+      const { headers, rows, meta } = parseWorkbookToJSON(wb);
       if (!headers.length) {
         setError('No headers found in the first row.');
       }
@@ -430,9 +492,33 @@ function AdminPage() {
               <tbody>
                 {previewRows.map((r, ridx) => (
                   <tr key={ridx}>
-                    {headers.map((_, cidx) => (
-                      <td key={cidx}>{r[cidx] ?? ''}</td>
-                    ))}
+                    {headers.map((_, cidx) => {
+                      const cellData = r[cidx];
+                      
+                      // Handle new object structure
+                      if (cellData && typeof cellData === 'object' && cellData.hasOwnProperty('value')) {
+                        return (
+                          <td key={cidx} className={cellData.isInput ? 'input-cell' : ''}>
+                            {cellData.isInput ? (
+                              <input 
+                                type="text" 
+                                className="cell-input" 
+                                defaultValue={cellData.value || ''} 
+                                placeholder="Nhập giá trị..."
+                              />
+                            ) : (
+                              cellData.value ?? ''
+                            )}
+                          </td>
+                        );
+                      }
+                      
+                      // Fallback for old format - ensure we don't render objects
+                      const displayValue = typeof cellData === 'object' && cellData !== null 
+                        ? (cellData.value ?? '') 
+                        : (cellData ?? '');
+                      return <td key={cidx}>{displayValue}</td>;
+                    })}
                   </tr>
                 ))}
               </tbody>

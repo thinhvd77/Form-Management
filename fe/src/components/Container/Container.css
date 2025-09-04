@@ -1,0 +1,63 @@
+.container {
+  width: 100%;
+  margin: 0 auto;
+}
+
+/* Max width variants */
+.container-small {
+  max-width: 576px;
+}
+
+.container-medium {
+  max-width: 768px;
+}
+
+.container-default {
+  max-width: 1500px;
+}
+
+.container-large {
+  max-width: 1600px;
+}
+
+.container-full {
+  max-width: none;
+}
+
+/* Padding variants */
+.container-padding-none {
+  padding: 0;
+}
+
+.container-padding-small {
+  padding: 0 12px;
+}
+
+.container-padding-default {
+  padding: 0 16px;
+}
+
+.container-padding-large {
+  padding: 0 24px;
+}
+
+/* Responsive padding adjustments */
+@media (max-width: 768px) {
+  .container-padding-default {
+    padding: 0 12px;
+  }
+  
+  .container-padding-large {
+    padding: 0 16px;
+  }
+}
+
+@media (max-width: 480px) {
+  .container-padding-default {
+    padding: 0 8px;
+  }
+  
+  .container-padding-large {
+    padding: 0 12px;
+  }
+}

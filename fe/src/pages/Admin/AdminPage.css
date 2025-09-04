@@ -15,6 +15,38 @@
 .table { width: 100%; border-collapse: collapse; font-size: 14px; }
 .table th, .table td { border-bottom: 1px solid #e5e7eb; padding: 10px 12px; text-align: left; white-space: nowrap; }
 .table thead { background: #f9fafb; }
+
+/* Input cell styles */
+.input-cell { 
+  background-color: #fffbeb !important; 
+  border-left: 3px solid #f59e0b;
+  position: relative;
+}
+
+.input-cell::before {
+  content: "📝";
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  font-size: 10px;
+  opacity: 0.6;
+}
+
+.cell-input {
+  width: 100%;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  padding: 4px 6px;
+  font-size: 13px;
+  background: white;
+  min-width: 80px;
+}
+
+.cell-input:focus {
+  outline: none;
+  border-color: #4f46e5;
+  box-shadow: 0 0 0 2px rgba(79, 70, 229, 0.2);
+}
 .table-meta { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; color: #6b7280; font-size: 13px; }
 .more-note { margin-top: 8px; }
 .empty { padding: 24px; text-align: center; color: #6b7280; }
